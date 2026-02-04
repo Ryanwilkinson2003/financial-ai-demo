@@ -85,10 +85,11 @@ COLUMN_MAPPING = {
 }
 
 # ==========================================
-# 3. DATA PROCESSING
+# 3. DATA PROCESSING (SMART ORIENTATION FIX)
 # ==========================================
 
 def clean_currency(x):
+    """Converts '$1,000.00' or '1,000' to float 1000.0"""
     if isinstance(x, str):
         clean = x.replace('$', '').replace(',', '').replace(' ', '')
         if '(' in clean and ')' in clean: clean = '-' + clean.replace('(', '').replace(')', '')
@@ -97,8 +98,23 @@ def clean_currency(x):
     return x
 
 def normalize_and_clean(df):
+    """Detects if Years are Rows or Columns and standardizes to Vertical format."""
+    
+    # 1. Check Orientation: Does the first column contain metrics like "Revenue"?
+    # If so, the years are probably in the header (columns). We need to TRANSPOSE.
+    first_col_vals = df.iloc[:, 0].astype(str).str.lower().tolist()
+    metric_hits = sum(1 for v in first_col_vals if 'revenue' in v or 'net income' in v or 'assets' in v)
+    
+    if metric_hits > 0:
+        # It's Horizontal (Years are headers). Flip it!
+        df = df.set_index(df.columns[0]).T
+        df.reset_index(inplace=True)
+        df.rename(columns={'index': 'Year'}, inplace=True)
+    
+    # 2. Standard Cleaning
     df.columns = [str(c).strip().lower() for c in df.columns]
     renamed = {}
+    
     for standard, variations in COLUMN_MAPPING.items():
         if standard not in renamed.values():
             for col in df.columns:
@@ -108,12 +124,28 @@ def normalize_and_clean(df):
                             renamed[col] = standard
                             break
                     if col in renamed: break
+    
     df = df.rename(columns=renamed)
-    df = df.loc[:, ~df.columns.duplicated()]
+    df = df.loc[:, ~df.columns.duplicated()] # Remove duplicates
+    
+    # 3. Ensure 'Year' exists and is numeric
+    if 'Year' not in df.columns:
+        # Try to find a column that looks like a year (2019, 2020)
+        for col in df.columns:
+            try:
+                # Check if sample value is a year-like number
+                sample = float(df[col].iloc[0])
+                if 1900 < sample < 2100:
+                    df.rename(columns={col: 'Year'}, inplace=True)
+                    break
+            except: pass
+            
+    # 4. Force Numeric
     for col in df.columns:
         if col != 'Year':
             df[col] = df[col].apply(clean_currency)
             df[col] = pd.to_numeric(df[col], errors='coerce')
+            
     return df
 
 def safe_div(n, d):
@@ -132,9 +164,12 @@ def safe_pct(n, d):
 
 def calculate_metrics(df):
     results = df.copy()
-    results = results.sort_values('Year')
+    if 'Year' in results.columns:
+        results = results.sort_values('Year')
+    
     def get(col): return results[col] if col in results else pd.Series([None]*len(results))
 
+    # Metrics
     results['Gross Margin'] = results.apply(lambda x: safe_pct(x.get('Revenue',0) - x.get('COGS',0), x.get('Revenue')), axis=1)
     results['Net Margin'] = results.apply(lambda x: safe_pct(x.get('Net Income'), x.get('Revenue')), axis=1)
     results['ROA'] = results.apply(lambda x: safe_pct(x.get('Net Income'), x.get('Total Assets')), axis=1)
@@ -149,6 +184,7 @@ def calculate_metrics(df):
 
     for m in ['Revenue', 'Net Income', 'Total Assets']:
         if m in results: results[f'{m} Growth'] = results[m].pct_change() * 100
+
     return results
 
 def calculate_common_size(df):
@@ -185,23 +221,15 @@ def get_gemini_analysis(api_key, industry, data_str):
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-pro')
-        
-        # --- NEW STRUCTURED PROMPT ---
         prompt = f"""
-        Act as a Chief Financial Officer (CFO). Analyze the following company in the {industry} industry.
-        
-        DATA PROVIDED:
+        Act as a CFO. Analyze this {industry} company.
+        DATA:
         {data_str}
         
         INSTRUCTIONS:
-        1. **Executive Summary:** Start with 3 bullet points summarizing the "Main Story" of the financials.
-        2. **Detailed Deep Dive:**
-           - **Profitability:** Analyze margins and ROE.
-           - **Liquidity & Solvency:** Analyze cash position and debt levels.
-           - **Growth:** Analyze the trajectory of revenue vs profit.
-        3. **Strategic Recommendations:** Provide 3 specific, high-level business recommendations.
-        
-        FORMAT: Use Markdown. Bold key terms. Keep it professional but clear.
+        1. Executive Summary (3 bullets).
+        2. Deep Dive (Profitability, Liquidity, Growth).
+        3. Strategic Recommendations (3 items).
         """
         return model.generate_content(prompt).text
     except: return None
@@ -233,32 +261,20 @@ def get_mock_analysis(industry, df):
     """
 
 def chat_with_data(user_query, df_context, api_key):
-    """Simple chat handler. In a real app, you would pass history to Gemini."""
     if not api_key:
-        # Mock Chat Logic
         return f"**[Mock AI]:** Based on the data, I see that your latest Net Margin is {df_context.iloc[-1].get('Net Margin', 'N/A'):.1f}%. (To get real AI answers, please add an API Key)."
-    
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-pro')
-        prompt = f"""
-        Context: The user is asking about this financial data:
-        {df_context.to_string()}
-        
-        User Question: {user_query}
-        
-        Answer professionally in 2-3 sentences.
-        """
+        prompt = f"Context:\n{df_context.to_string()}\nQuestion: {user_query}\nAnswer professionally in 2-3 sentences."
         return model.generate_content(prompt).text
-    except:
-        return "I'm having trouble connecting to the AI right now."
+    except: return "I'm having trouble connecting to the AI right now."
 
 # ==========================================
 # 6. MAIN APPLICATION
 # ==========================================
 
 def main():
-    # --- Sidebar ---
     with st.sidebar:
         st.header("⚙️ Configuration")
         api_key = st.text_input("Gemini API Key (Optional)", type="password")
@@ -280,7 +296,6 @@ def main():
                     st.session_state.common_size = calculate_common_size(df_clean)
                     st.rerun()
 
-    # --- Main Content ---
     st.markdown('<div class="main-header">Financial Statement Analysis</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-text">Institutional-grade benchmarking and AI insights</div>', unsafe_allow_html=True)
     st.markdown("---")
@@ -292,7 +307,6 @@ def main():
         with c2: st.markdown('<div class="metric-card"><h3>⚖️ 2. Benchmark</h3><p>Compare against 12+ industries.</p></div>', unsafe_allow_html=True)
         with c3: st.markdown('<div class="metric-card"><h3>🤖 3. Insights</h3><p>Get AI-powered executive summaries.</p></div>', unsafe_allow_html=True)
 
-    # File Loader
     if uploaded_file and st.session_state.processed_data is None:
         try:
             if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file)
@@ -301,13 +315,11 @@ def main():
             st.success("✅ File Loaded Successfully!")
         except Exception as e: st.error(f"Error: {e}")
 
-    # Results
     if st.session_state.analysis_results is not None:
         results = st.session_state.analysis_results
         common = st.session_state.common_size
         latest = results.iloc[-1]
         
-        # Tabs
         t1, t2, t3, t4, t5 = st.tabs(["🚦 Benchmarks", "📊 Visual Trends", "🔬 Deep Data", "🤖 AI Report", "💬 Assistant"])
         
         with t1:
@@ -356,8 +368,6 @@ def main():
 
         with t5:
             st.subheader("💬 AI Financial Assistant")
-            st.caption("Ask questions about your data (e.g., 'Why is my ROE declining?')")
-            
             for msg in st.session_state.chat_history:
                 st.chat_message(msg['role']).write(msg['content'])
             
