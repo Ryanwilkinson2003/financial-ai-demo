@@ -34,20 +34,14 @@ st.markdown("""
         display: inline-block;
         margin-right: 5px;
     }
-    .dot-green { background-color: #28a745; } /* Green */
-    .dot-gray { background-color: #adb5bd; }   /* Gray (Neutral) */
-    .dot-red { background-color: #dc3545; }    /* Red */
+    .dot-green { background-color: #28a745; } 
+    .dot-gray { background-color: #adb5bd; }   
+    .dot-red { background-color: #dc3545; }    
     .small-font { font-size: 0.85rem; color: #666; }
     </style>
 """, unsafe_allow_html=True)
 
-# 12 Industries with specific benchmark ranges (Avg, Leader, Failure)
-# Structure: (Min_Avg, Max_Avg), (Min_Leader, Max_Leader), (Min_Fail, Max_Fail)
-# Note: These are generalized realistic ranges for demonstration.
-# ==========================================
-# MASTER BENCHMARK DATA
-# ==========================================
-
+# Master Benchmark Data
 INDUSTRY_BENCHMARKS = {
     "SaaS / Technology": {
         "gross_margin": ((70, 80), (82, 95), (30, 60)),
@@ -161,7 +155,6 @@ INDUSTRY_BENCHMARKS = {
         "debt_to_equity": ((1.0, 2.0), (0.5, 1.0), (3.0, 10.0)),
         "revenue_growth": ((5, 10), (15, 25), (-15, 0)),
         "inventory_turnover": ((4, 8), (9, 15), (0, 3))
-
     }
 }
 
@@ -187,7 +180,7 @@ COLUMN_MAPPING = {
     'current_liabilities': ['current liabilities', 'total current liabilities'],
     'accounts_payable': ['accounts payable', 'payables', 'trade payables'],
     'equity': ['shareholders equity', 'total equity', 'stockholders equity', 'total shareholders equity', 'equity'],
-    'debt': ['total debt', 'long term debt', 'short term debt', 'notes payable', 'loans'], # Often requires sum of short+long
+    'debt': ['total debt', 'long term debt', 'short term debt', 'notes payable', 'loans'], 
     
     # Cash Flow
     'operating_cash_flow': ['cash flow from operations', 'operating cash flow', 'net cash from operating activities', 'cash provided by operations'],
@@ -248,7 +241,6 @@ def detect_format_and_parse(file_obj):
     df.columns = df.columns.astype(str).str.strip()
     
     # Strategy: Look for "Year" or Date-like patterns to determine orientation
-    # Regex for year (e.g., 2021, 2022, FY23)
     year_pattern = r'20\d{2}|19\d{2}|FY\d{2}'
     
     # Check headers for years (Vertical layout usually has years in columns)
@@ -257,7 +249,6 @@ def detect_format_and_parse(file_obj):
     is_vertical = False
     
     if len(header_years) >= 2:
-        # Likely Vertical (Metrics in first col, Years in other cols)
         is_vertical = True
     else:
         # Check first column for years (Horizontal layout)
@@ -266,7 +257,6 @@ def detect_format_and_parse(file_obj):
         if len(col_years) >= 2:
             is_vertical = False
         else:
-            # Fallback: Assume horizontal if columns look like metrics
             is_vertical = False
 
     if is_vertical:
@@ -277,7 +267,6 @@ def detect_format_and_parse(file_obj):
         # Now Index is Years, Columns are Metrics
     else:
         # Assume one of the columns is "Year" or "Date"
-        # Find the year column
         year_col = None
         for col in df.columns:
             if clean_column_name(col) in ['year', 'fiscal year', 'period', 'date']:
@@ -294,13 +283,12 @@ def detect_format_and_parse(file_obj):
                     break
     
     # Clean Index (Years)
-    # Extract just the year number if possible
     try:
         df.index = df.index.astype(str).str.extract(r'(\d{4})')[0].astype(float).astype(int)
     except:
-        pass # Keep as is if regex fails (e.g. unique identifiers)
+        pass 
     
-    df = df.sort_index() # Ensure chronological order (oldest to newest)
+    df = df.sort_index() 
     return df
 
 # ==========================================
@@ -317,8 +305,8 @@ class FinancialAnalyzer:
         return np.where((b == 0) | (pd.isna(b)) | (pd.isna(a)), np.nan, a / b)
 
     def calculate_metrics(self):
-        d = self.raw_df # Shorthand
-        m = self.metrics # Shorthand
+        d = self.raw_df 
+        m = self.metrics 
         
         # --- Profitability ---
         m['Gross Margin (%)'] = self.safe_div(d['gross_profit'], d['revenue']) * 100
@@ -329,7 +317,6 @@ class FinancialAnalyzer:
         
         # --- Liquidity ---
         m['Current Ratio'] = self.safe_div(d['current_assets'], d['current_liabilities'])
-        # Quick Ratio: (Current Assets - Inventory) / Current Liab
         m['Quick Ratio'] = self.safe_div(d['current_assets'] - d['inventory'].fillna(0), d['current_liabilities'])
         m['Operating Cash Flow Ratio'] = self.safe_div(d['operating_cash_flow'], d['current_liabilities'])
 
@@ -340,22 +327,12 @@ class FinancialAnalyzer:
 
         # --- Efficiency ---
         m['Asset Turnover'] = self.safe_div(d['revenue'], d['total_assets'])
-        
-        # Inventory Turnover = COGS / Average Inventory (using current for simplicity or avg if prev year exists)
-        # Using current inventory for point-in-time simplicity
         m['Inventory Turnover'] = self.safe_div(d['cogs'], d['inventory'])
         m['Days Sales Inventory'] = self.safe_div(365, m['Inventory Turnover'])
-        
-        # Receivables Turnover = Revenue / AR
         m['AR Turnover'] = self.safe_div(d['revenue'], d['accounts_receivable'])
         days_sales_outstanding = self.safe_div(365, m['AR Turnover'])
-        
-        # Accounts Payable Turnover (Est) = COGS / AP
         ap_turnover = self.safe_div(d['cogs'], d['accounts_payable'])
         days_payable_outstanding = self.safe_div(365, ap_turnover)
-
-        # Cash Gap (Cash Conversion Cycle) = DSI + DSO - DPO
-        # Only calc if all 3 exist
         m['Cash Conversion Cycle (Days)'] = days_sales_outstanding + m['Days Sales Inventory'] - days_payable_outstanding
         
         # --- Growth (YoY) ---
@@ -363,7 +340,7 @@ class FinancialAnalyzer:
         m['Net Income Growth (%)'] = d['net_income'].pct_change() * 100
         m['Asset Growth (%)'] = d['total_assets'].pct_change() * 100
         
-        # --- Valuation / Other ---
+        # --- Valuation ---
         m['EPS'] = self.safe_div(d['net_income'], d['shares_outstanding'])
 
         return m
@@ -377,12 +354,9 @@ def get_status_color(value, metric_name, industry_data):
     Returns 'green' (better than avg), 'gray' (avg), or 'red' (worse than avg).
     Handles logic where lower is sometimes better (e.g. Debt).
     """
-    # 1. Safety Checks
     if pd.isna(value) or metric_name not in industry_data:
         return "gray"
     
-    # 2. Map Metric Name to Dictionary Key
-    # Ensure these keys match your INDUSTRY_BENCHMARKS keys exactly
     key_map = {
         'Gross Margin (%)': 'gross_margin',
         'Net Margin (%)': 'net_margin',
@@ -410,17 +384,12 @@ def get_status_color(value, metric_name, industry_data):
         
     bench_key = key_map[metric_name]
     
-    # 3. Get the "Average" Range for this industry
-    # Structure is ((Min_Avg, Max_Avg), (Leader...), (Fail...))
-    # We only care about the first tuple [0] for the Average range
     if bench_key not in industry_data:
         return "gray"
         
     avg_range = industry_data[bench_key][0] 
     min_avg, max_avg = avg_range
     
-    # 4. Define which metrics are "Lower is Better"
-    # If a company has LOWER debt than average, that is GOOD (Green)
     lower_is_better = [
         'debt_to_assets', 
         'debt_to_equity', 
@@ -430,7 +399,6 @@ def get_status_color(value, metric_name, industry_data):
     
     is_lower_good = bench_key in lower_is_better
     
-    # 5. Determine Color
     if is_lower_good:
         if value < min_avg:
             return "green" # Lower than avg range = Better
@@ -439,23 +407,12 @@ def get_status_color(value, metric_name, industry_data):
         else:
             return "gray"  # Within avg range = Neutral
     else:
-        # Standard "Higher is Better" (Margins, Growth, etc.)
-        if value > max_avg:
-            return "green" # Higher than avg range = Better
-        elif value < min_avg:
-            return "red"   # Lower than avg range = Worse
-else:
-        # Standard "Higher is Better" (Margins, Growth, etc.)
         if value > max_avg:
             return "green" # Higher than avg range = Better
         elif value < min_avg:
             return "red"   # Lower than avg range = Worse
         else:
             return "gray"  # Within avg range = Neutral
-
-# ==========================================
-# 4b. AI LOGIC FUNCTIONS
-# ==========================================
 
 def generate_logic_based_insights(metrics_df, industry, industry_data):
     """
@@ -477,100 +434,6 @@ def generate_logic_based_insights(metrics_df, industry, industry_data):
     if pd.isna(gm):
         prof_text += "Insufficient data to calculate Gross Margin. "
     else:
-        # Check against average benchmark (index 0)
-        bench_gm = industry_data.get('gross_margin', ((0,0),(0,0),(0,0)))
-        avg_low, avg_high = bench_gm[0]
-        
-        if gm < avg_low:
-            prof_text += f"Gross Margin of {gm:.1f}% is **below the industry average** ({avg_low}-{avg_high}%), suggesting pricing pressure or high direct costs. "
-        elif gm > avg_high:
-            prof_text += f"Gross Margin of {gm:.1f}% is **strong**, exceeding the industry average. "
-        else:
-            prof_text += f"Gross Margin of {gm:.1f}% is within healthy industry norms. "
-            
-    if not pd.isna(rev_g):
-        if rev_g > 0:
-            prof_text += f"Revenue is growing at {rev_g:.1f}% YoY. "
-        else:
-            prof_text += f"WARNING: Revenue contracted by {abs(rev_g):.1f}% this year. "
-            
-    report.append(prof_text)
-    
-    # 2. Liquidity Analysis
-    report.append("#### 💧 Liquidity & Solvency")
-    cr = latest.get('Current Ratio', np.nan)
-    ccc = latest.get('Cash Conversion Cycle (Days)', np.nan)
-    
-    liq_text = ""
-    if not pd.isna(cr):
-        if cr < 1.0:
-            liq_text += f"**CRITICAL:** Current Ratio is {cr:.2f}, indicating the company may struggle to pay short-term obligations. "
-        elif cr < 1.5:
-            liq_text += f"Current Ratio of {cr:.2f} is tight but manageable. "
-        else:
-            liq_text += f"Liquidity is robust with a Current Ratio of {cr:.2f}. "
-            
-    if not pd.isna(ccc):
-        liq_text += f"The Cash Conversion Cycle is {ccc:.0f} days. "
-    
-    report.append(liq_text)
-
-    # 3. Efficiency & Risk
-    report.append("#### ⚙️ Efficiency & Risk")
-    debt_eq = latest.get('Debt to Equity', np.nan)
-    roa = latest.get('ROA (%)', np.nan)
-    
-    eff_text = ""
-    if not pd.isna(debt_eq):
-        if debt_eq > 2.0:
-            eff_text += f"Leverage is high (Debt/Equity: {debt_eq:.2f}), increasing financial risk. "
-        else:
-            eff_text += "Leverage appears conservatively managed. "
-            
-    if not pd.isna(roa):
-        if roa < 0:
-            eff_text += "The company is generating negative returns on its assets. "
-        elif roa > 10:
-            eff_text += "Asset efficiency is excellent, generating over 10% return on assets. "
-            
-    report.append(eff_text)
-    
-    # 4. Recommendations
-    report.append("#### 🚀 Strategic Recommendations")
-    recs = []
-    # Generic logic checks
-    if not pd.isna(gm) and gm < industry_data.get('gross_margin', [(0,0)])[0][0]:
-        recs.append("- **Cost Review:** Audit COGS immediately. Negotiate with suppliers or review pricing strategy.")
-    if not pd.isna(cr) and cr < 1.2:
-        recs.append("- **Cash Preservation:** Immediate focus on cash flow is needed. Delay CapEx.")
-    if not pd.isna(rev_g) and rev_g < 5:
-        recs.append("- **Growth Strategy:** Top-line growth is stagnant. Investigate new marketing channels.")
-    
-    if not recs:
-        recs.append("- Continue monitoring key ratios quarterly.")
-        recs.append("- Benchmark against top competitors to find marginal gains.")
-        
-    report.extend(recs)
-    
-    return "\n".join(report)
-    Uses extensive if/else logic to construct paragraphs.
-    """
-    latest = metrics_df.iloc[-1]
-    
-    report = []
-    report.append(f"### 🤖 AI Financial Analysis (Synthetic Mode)\n")
-    report.append(f"**Industry Context:** Analyzing against {industry} standards.\n")
-    
-    # 1. Profitability Analysis
-    report.append("#### 💰 Profitability & Growth")
-    gm = latest.get('Gross Margin (%)', np.nan)
-    rev_g = latest.get('Revenue Growth (%)', np.nan)
-    
-    prof_text = ""
-    if pd.isna(gm):
-        prof_text += "Insufficient data to calculate Gross Margin. "
-    else:
-        # Check against average benchmark (index 0)
         bench_gm = industry_data.get('gross_margin', ((0,0),(0,0),(0,0)))
         avg_low, avg_high = bench_gm[0]
         
@@ -673,6 +536,7 @@ def generate_gemini_insights(api_key, metrics_df, industry):
         return response.text
     except Exception as e:
         return f"⚠️ API Error: {str(e)}. Switching to Logic-Based Analysis..."
+
 # ==========================================
 # 5. MAIN UI
 # ==========================================
