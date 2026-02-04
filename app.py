@@ -305,7 +305,6 @@ def main():
             
         uploaded_file = st.file_uploader("📂 Upload Financials", type=['csv', 'xlsx'], on_change=clear_cache)
         
-        # --- FIX: READ FILE IMMEDIATELY ---
         if uploaded_file and st.session_state.processed_data is None:
             try:
                 if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file)
@@ -313,7 +312,6 @@ def main():
                 st.session_state.processed_data = df
                 st.success("✅ Data Loaded")
             except Exception as e: st.error(f"Error: {e}")
-        # ----------------------------------
         
         selected_industry = st.selectbox("🏭 Select Industry", list(INDUSTRY_BENCHMARKS.keys()))
         
@@ -394,9 +392,10 @@ def main():
         with tabs[2]:
             st.markdown('<div class="section-header">Financial Statements & Ratios</div>', unsafe_allow_html=True)
             st.write("### Ratio Analysis")
-            st.dataframe(results.set_index('Year').T.style.background_gradient(cmap="Blues", axis=1).format("{:.2f}"), use_container_width=True)
+            # Removed background_gradient to prevent ImportError (matplotlib)
+            st.dataframe(results.set_index('Year').T.style.format("{:.2f}"), use_container_width=True)
             st.write("### Common Size Analysis")
-            st.dataframe(common.set_index('Year').T.style.background_gradient(cmap="Greens", axis=1).format("{:.1f}%"), use_container_width=True)
+            st.dataframe(common.set_index('Year').T.style.format("{:.1f}%"), use_container_width=True)
 
         with tabs[3]:
             st.markdown('<div class="section-header">AI Strategic Assessment</div>', unsafe_allow_html=True)
@@ -422,3 +421,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
