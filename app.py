@@ -352,11 +352,12 @@ class FinancialAnalyzer:
 def get_status_color(value, metric_name, industry_data):
     """
     Returns 'green' (better than avg), 'gray' (avg), or 'red' (worse than avg).
-    Handles logic where lower is sometimes better (e.g. Debt).
     """
-    if pd.isna(value) or metric_name not in industry_data:
+    # 1. Check for missing value
+    if pd.isna(value):
         return "gray"
     
+    # 2. Map Metric Name to Dictionary Key
     key_map = {
         'Gross Margin (%)': 'gross_margin',
         'Net Margin (%)': 'net_margin',
@@ -379,17 +380,21 @@ def get_status_color(value, metric_name, industry_data):
         'Asset Growth (%)': 'asset_growth'
     }
     
+    # If we don't know this metric, return gray
     if metric_name not in key_map:
         return "gray"
         
     bench_key = key_map[metric_name]
     
+    # 3. Check if we have benchmarks for this specific industry
     if bench_key not in industry_data:
         return "gray"
         
+    # 4. Get the "Average" Range
     avg_range = industry_data[bench_key][0] 
     min_avg, max_avg = avg_range
     
+    # 5. Define "Lower is Better" metrics
     lower_is_better = [
         'debt_to_assets', 
         'debt_to_equity', 
@@ -399,6 +404,7 @@ def get_status_color(value, metric_name, industry_data):
     
     is_lower_good = bench_key in lower_is_better
     
+    # 6. Determine Color
     if is_lower_good:
         if value < min_avg:
             return "green" # Lower than avg range = Better
@@ -407,6 +413,7 @@ def get_status_color(value, metric_name, industry_data):
         else:
             return "gray"  # Within avg range = Neutral
     else:
+        # Standard "Higher is Better"
         if value > max_avg:
             return "green" # Higher than avg range = Better
         elif value < min_avg:
@@ -434,6 +441,7 @@ def generate_logic_based_insights(metrics_df, industry, industry_data):
     if pd.isna(gm):
         prof_text += "Insufficient data to calculate Gross Margin. "
     else:
+        # Check against average benchmark (index 0)
         bench_gm = industry_data.get('gross_margin', ((0,0),(0,0),(0,0)))
         avg_low, avg_high = bench_gm[0]
         
