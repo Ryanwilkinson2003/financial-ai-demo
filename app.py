@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS to fill whitespace and style cards
+# Custom CSS
 st.markdown("""
 <style>
     .metric-card {
@@ -85,7 +85,7 @@ COLUMN_MAPPING = {
 }
 
 # ==========================================
-# 3. DATA PROCESSING & CLEANING
+# 3. DATA PROCESSING
 # ==========================================
 
 def clean_currency(x):
@@ -101,9 +101,8 @@ def normalize_and_clean(df):
     df.columns = [str(c).strip().lower() for c in df.columns]
     renamed = {}
     
-    # Mapping Logic
     for standard, variations in COLUMN_MAPPING.items():
-        if standard not in renamed.values(): # Don't overwrite
+        if standard not in renamed.values():
             for col in df.columns:
                 if col not in renamed:
                     for v in variations:
@@ -113,11 +112,8 @@ def normalize_and_clean(df):
                     if col in renamed: break
     
     df = df.rename(columns=renamed)
+    df = df.loc[:, ~df.columns.duplicated()] # Remove duplicates
     
-    # Remove Duplicates (Keep first occurrence of "Net Income", etc.)
-    df = df.loc[:, ~df.columns.duplicated()]
-    
-    # Force Numeric
     for col in df.columns:
         if col != 'Year':
             df[col] = df[col].apply(clean_currency)
@@ -125,7 +121,6 @@ def normalize_and_clean(df):
             
     return df
 
-# === NEW SAFE MATH HELPER (PREVENTS CRASHES) ===
 def safe_div(n, d):
     try:
         if d is None or n is None or pd.isna(d) or pd.isna(n) or d == 0: return None
@@ -133,7 +128,6 @@ def safe_div(n, d):
     except: return None
 
 def safe_pct(n, d):
-    """Safely calculates percentage, handles multiplication internally."""
     val = safe_div(n, d)
     return val * 100 if val is not None else None
 
@@ -145,28 +139,21 @@ def calculate_metrics(df):
     results = df.copy()
     results = results.sort_values('Year')
     
-    # Helper to get column or None series
     def get(col): return results[col] if col in results else pd.Series([None]*len(results))
 
-    # Profitability (Using safe_pct to prevent crashes)
+    # Metrics
     results['Gross Margin'] = results.apply(lambda x: safe_pct(x.get('Revenue',0) - x.get('COGS',0), x.get('Revenue')), axis=1)
     results['Net Margin'] = results.apply(lambda x: safe_pct(x.get('Net Income'), x.get('Revenue')), axis=1)
     results['ROA'] = results.apply(lambda x: safe_pct(x.get('Net Income'), x.get('Total Assets')), axis=1)
     results['ROE'] = results.apply(lambda x: safe_pct(x.get('Net Income'), x.get('Equity')), axis=1)
-
-    # Liquidity
     results['Current Ratio'] = results.apply(lambda x: safe_div(x.get('Current Assets'), x.get('Current Liabilities')), axis=1)
-    
     results['Quick Ratio'] = results.apply(lambda x: safe_div(
         (x.get('Cash', 0) or 0) + (x.get('Accounts Receivable', 0) or 0) + (x.get('Short Term Investments', 0) or 0),
         x.get('Current Liabilities')
     ), axis=1)
-
-    # Leverage
     results['Debt-to-Assets'] = results.apply(lambda x: safe_pct(x.get('Total Liabilities'), x.get('Total Assets')), axis=1)
     results['Debt-to-Equity'] = results.apply(lambda x: safe_div(x.get('Total Liabilities'), x.get('Equity')), axis=1)
 
-    # Growth
     for m in ['Revenue', 'Net Income', 'Total Assets']:
         if m in results: results[f'{m} Growth'] = results[m].pct_change() * 100
 
@@ -174,16 +161,12 @@ def calculate_metrics(df):
 
 def calculate_common_size(df):
     common = df.copy()
-    # IS as % of Revenue
     if 'Revenue' in df:
-        for c in ['COGS', 'Gross Profit', 'Operating Expenses', 'Net Income', 'Operating Income']:
+        for c in ['COGS', 'Gross Profit', 'Operating Expenses', 'Net Income']:
             if c in df: common[f'{c} (%)'] = common.apply(lambda x: safe_pct(x[c], x['Revenue']), axis=1)
-    
-    # BS as % of Assets
     if 'Total Assets' in df:
         for c in ['Current Assets', 'Inventory', 'Accounts Receivable', 'Cash', 'PP&E', 'Total Liabilities', 'Equity']:
             if c in df: common[f'{c} (%)'] = common.apply(lambda x: safe_pct(x[c], x['Total Assets']), axis=1)
-            
     return common
 
 # ==========================================
@@ -202,7 +185,7 @@ def get_traffic_light(val, metric, industry_data):
         if val >= high: return "🟢", "Leader", f"+{val-high:.1f} pts"
         elif val >= low: return "🟡", "Average", "In Range"
         else: return "🔴", "Weak/Risk", f"{val-low:.1f} pts"
-    else: # Lower is better
+    else:
         if val <= low: return "🟢", "Leader", "Low Risk"
         elif val <= high: return "🟡", "Average", "In Range"
         else: return "🔴", "Weak/Risk", "High Risk"
@@ -220,7 +203,6 @@ def get_mock_analysis(industry, df):
     return f"""
     ### 🤖 AI Analyst Report (Mock Mode)
     **Industry:** {industry}
-    The analysis detects mixed signals. Focus on **Liquidity** and **Margins**.
     
     #### ✅ Strengths
     * **Revenue Scale:** Consistent top-line activity.
@@ -266,55 +248,31 @@ def main():
     st.markdown('<div class="sub-text">Institutional-grade benchmarking and AI insights</div>', unsafe_allow_html=True)
     st.markdown("---")
 
-    # --- LANDING PAGE (FILLING WHITE SPACE) ---
     if not uploaded_file and st.session_state.analysis_results is None:
         st.info("👋 Welcome! Upload your balance sheet, income statement, or cash flow to begin.")
-        
-        # 3-Column Feature Dashboard
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown("""
-            <div class="metric-card">
-                <h3>📥 1. Upload Data</h3>
-                <p>Upload any CSV or Excel file. Our AI engine normalizes messy column names automatically.</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("""
-            <div class="metric-card">
-                <h3>⚖️ 2. Benchmarking</h3>
-                <p>Compare against 12+ industries. See exactly where you stand: Leader, Average, or At Risk.</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        with col3:
-            st.markdown("""
-            <div class="metric-card">
-                <h3>🤖 3. AI Insights</h3>
-                <p>Get a CEO-level executive summary, detecting failure patterns before they happen.</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-        st.write("")
-        st.caption("Try the sample data provided in the documentation to see the demo in action.")
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown('<div class="metric-card"><h3>📥 1. Upload</h3><p>Upload any CSV or Excel file.</p></div>', unsafe_allow_html=True)
+        with c2:
+            st.markdown('<div class="metric-card"><h3>⚖️ 2. Benchmark</h3><p>Compare against 12+ industries.</p></div>', unsafe_allow_html=True)
+        with c3:
+            st.markdown('<div class="metric-card"><h3>🤖 3. Insights</h3><p>Get AI-powered executive summaries.</p></div>', unsafe_allow_html=True)
 
-    # File Loader Logic
+    # File Loader
     if uploaded_file and st.session_state.processed_data is None:
         try:
             if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file)
             else: df = pd.read_excel(uploaded_file)
             st.session_state.processed_data = df
-            st.success("✅ File Loaded Successfully! Click 'Analyze Financials' in the sidebar.")
-        except Exception as e: st.error(f"Error Loading File: {e}")
+            st.success("✅ File Loaded Successfully!")
+        except Exception as e: st.error(f"Error: {e}")
 
-    # Results Dashboard
+    # Results
     if st.session_state.analysis_results is not None:
         results = st.session_state.analysis_results
         common = st.session_state.common_size
         latest = results.iloc[-1]
         
-        # Tabs
         t1, t2, t3, t4 = st.tabs(["🚦 Benchmarks", "📊 Visual Trends", "🔬 Deep Data", "🤖 AI Insights"])
         
         with t1:
@@ -325,8 +283,14 @@ def main():
             for m in metrics:
                 val = latest.get(m)
                 icon, status, dist = get_traffic_light(val, m, INDUSTRY_BENCHMARKS[selected_industry])
-                val_fmt = f"{val:.1f}%" if "Margin" in m or "ROE" in m else f"{val:.2f}"
-                if val is None or pd.isna(val): val_fmt = "N/A"
+                
+                # --- FIX IS HERE: Check for None BEFORE formatting ---
+                if val is None or pd.isna(val):
+                    val_fmt = "N/A"
+                else:
+                    val_fmt = f"{val:.1f}%" if "Margin" in m or "ROE" in m else f"{val:.2f}"
+                # -----------------------------------------------------
+
                 bench_data.append({"Metric": m, "Value": val_fmt, "Status": icon, "Rating": status, "Variance": dist})
             
             st.dataframe(pd.DataFrame(bench_data), use_container_width=True, hide_index=True)
