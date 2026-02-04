@@ -57,7 +57,7 @@ st.markdown("""
     .section-header {
         font-size: 1.4rem;
         font-weight: 600;
-        color: #6366F1; /* Indigo */
+        color: #6366F1;
         margin-top: 1.5rem;
         margin-bottom: 1rem;
         border-bottom: 2px solid #E0E7FF;
@@ -93,7 +93,7 @@ INDUSTRY_PROMPTS = {
     "General": "Provide a balanced analysis of Profitability, Liquidity, and Solvency."
 }
 
-# Extensive Column Mapping (The "Rosetta Stone" for Financials)
+# Extensive Column Mapping
 COLUMN_MAPPING = {
     "Year": ["year", "fiscal year", "fy"],
     # P&L
@@ -141,7 +141,7 @@ def clean_currency(x):
 
 def normalize_and_clean(df):
     """Auto-detects orientation and standardizes column names."""
-    # 1. Orientation Check (Are years columns or rows?)
+    # 1. Orientation Check
     first_col = df.iloc[:, 0].astype(str).str.lower().tolist()
     metric_matches = sum(1 for v in first_col if 'revenue' in v or 'net income' in v or 'assets' in v)
     
@@ -193,7 +193,6 @@ def safe_div(n, d):
     except: return None
 
 def safe_pct(n, d):
-    """Returns a percentage (e.g., 0.2 -> 20.0)"""
     val = safe_div(n, d)
     return val * 100 if val is not None else None
 
@@ -202,7 +201,6 @@ def calculate_metrics(df):
     results = df.copy()
     if 'Year' in results.columns: results = results.sort_values('Year')
     
-    # Helper to avoid KeyErrors
     def get(col): return results[col] if col in results else pd.Series([None]*len(results))
 
     # 1. Profitability
@@ -224,12 +222,11 @@ def calculate_metrics(df):
     results['Inventory Turnover'] = results.apply(lambda x: safe_div(x.get('COGS'), x.get('Inventory')), axis=1)
     results['AR Turnover'] = results.apply(lambda x: safe_div(x.get('Revenue'), x.get('Accounts Receivable')), axis=1)
     
-    # Days Calculation (365 / Turnover)
+    # Days Calculation
     results['DSI (Days Inventory)'] = results.apply(lambda x: safe_div(365, x.get('Inventory Turnover')), axis=1)
     results['DSO (Days Sales)'] = results.apply(lambda x: safe_div(365, x.get('AR Turnover')), axis=1)
     
-    # Cash Gap Estimate (DSI + DSO - DPO) *Assuming DPO is 0 if AP missing
-    # Note: We need AP Turnover for DPO.
+    # Cash Gap Estimate
     results['AP Turnover'] = results.apply(lambda x: safe_div(x.get('COGS'), x.get('Accounts Payable')), axis=1)
     results['DPO (Days Payable)'] = results.apply(lambda x: safe_div(365, x.get('AP Turnover')), axis=1)
     
@@ -250,48 +247,53 @@ def calculate_metrics(df):
     return results
 
 def calculate_common_size(df):
-    """
-    FIX: Only applies common size to Dollar-based columns.
-    Excludes calculated Ratios to prevent the 5000% error.
-    """
+    """Exclude Ratio columns to prevent 5000% errors."""
     common = df.copy()
-    
-    # Identify "Ratio" columns vs "Dollar" columns
-    # We assume Dollar columns are the ones mapped in COLUMN_MAPPING + any unknowns that aren't ratios
     excluded_keywords = ['ratio', 'margin', 'turnover', 'growth', 'days', 'cycle', 'coverage', '%', 'year']
-    
     potential_dollar_cols = [c for c in df.columns if not any(k in c.lower() for k in excluded_keywords)]
 
-    # IS % of Revenue
     if 'Revenue' in df:
         for c in potential_dollar_cols:
             if c in df: common[f'{c} (% Rev)'] = common.apply(lambda x: safe_pct(x[c], x['Revenue']), axis=1)
             
-    # BS % of Assets
     if 'Total Assets' in df:
-        # We selectively pick BS items to avoid confusion with IS items
         bs_targets = ['Current Assets', 'Inventory', 'Accounts Receivable', 'Cash', 'PP&E', 'Total Liabilities', 'Equity', 'Long Term Debt', 'Current Liabilities']
         for c in bs_targets:
             if c in df: common[f'{c} (% Asset)'] = common.apply(lambda x: safe_pct(x[c], x['Total Assets']), axis=1)
             
     return common
 
-# ==========================================
-# 4. AI & VISUALS
-# ==========================================
+# --- VISUAL HELPERS ---
 
+# 1. SAFE FORMATTER (CRITICAL FIX FOR CRASHES)
+def safe_format(val):
+    """Safely formats numbers, handling None/NaN without crashing."""
+    if val is None or pd.isna(val):
+        return "N/A"
+    try:
+        return "{:,.2f}".format(val)
+    except:
+        return str(val)
+
+def safe_format_pct(val):
+    if val is None or pd.isna(val):
+        return "N/A"
+    try:
+        return "{:.1f}%".format(val)
+    except:
+        return str(val)
+
+# 2. TRAFFIC LIGHTS
 def get_traffic_light(val, metric, industry_data):
     if val is None or pd.isna(val): return "⚪", "No Data"
     ranges = industry_data.get(metric)
     if not ranges: return "⚪", "No Benchmark"
     
     low, high = ranges
-    # Inverse Logic (Lower is better)
     if metric in ['Debt-to-Equity', 'Debt-to-Assets', 'Cash Conversion Cycle']:
         if val <= low: return "🟢", "Strong"
         elif val <= high: return "🟡", "Average"
         else: return "🔴", "Weak"
-    # Standard Logic (Higher is better)
     if val >= high: return "🟢", "Strong"
     elif val >= low: return "🟡", "Average"
     else: return "🔴", "Weak"
@@ -335,7 +337,6 @@ def chat_with_data(query, df, api_key):
 # ==========================================
 
 def main():
-    # --- Sidebar ---
     with st.sidebar:
         st.header("⚙️ Settings")
         api_key = st.text_input("Gemini API Key (Optional)", type="password")
@@ -347,7 +348,6 @@ def main():
             
         uploaded_file = st.file_uploader("📂 Upload Financials", type=['csv', 'xlsx'], on_change=clear_cache)
         
-        # Immediate File Loading
         if uploaded_file and st.session_state.processed_data is None:
             try:
                 if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file)
@@ -366,7 +366,6 @@ def main():
                     st.session_state.common_size = calculate_common_size(df_clean)
                     st.rerun()
 
-    # --- Main Content ---
     if not uploaded_file and st.session_state.analysis_results is None:
         st.title("FinSight AI | Master Edition")
         st.markdown("### Institutional Financial Statement Analysis")
@@ -384,16 +383,15 @@ def main():
         
         st.title(f"📊 Analysis: {selected_industry}")
         
-        # Hero KPIs
         k1, k2, k3, k4 = st.columns(4)
         with k1: 
-            st.markdown(f'<div class="metric-card"><h4>Revenue Growth</h4><p>{latest.get("Revenue Growth", 0):.1f}%</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><h4>Revenue Growth</h4><p>{safe_format(latest.get("Revenue Growth"))}%</p></div>', unsafe_allow_html=True)
         with k2: 
-            st.markdown(f'<div class="metric-card"><h4>Net Margin</h4><p>{latest.get("Net Margin", 0):.1f}%</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><h4>Net Margin</h4><p>{safe_format(latest.get("Net Margin"))}%</p></div>', unsafe_allow_html=True)
         with k3: 
-            st.markdown(f'<div class="metric-card"><h4>Current Ratio</h4><p>{latest.get("Current Ratio", 0):.2f}x</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><h4>Current Ratio</h4><p>{safe_format(latest.get("Current Ratio"))}x</p></div>', unsafe_allow_html=True)
         with k4: 
-            st.markdown(f'<div class="metric-card"><h4>ROE</h4><p>{latest.get("ROE", 0):.1f}%</p></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="metric-card"><h4>ROE</h4><p>{safe_format(latest.get("ROE"))}%</p></div>', unsafe_allow_html=True)
 
         tabs = st.tabs(["🚦 Scorecard", "📈 Visual Trends", "🔬 Deep Data", "🤖 AI Report", "💬 Chat"])
         
@@ -404,8 +402,7 @@ def main():
             for m in metrics:
                 val = latest.get(m)
                 icon, status = get_traffic_light(val, m, INDUSTRY_BENCHMARKS.get(selected_industry))
-                val_fmt = f"{val:.1f}%" if "Margin" in m or "ROE" in m else f"{val:.2f}"
-                if pd.isna(val): val_fmt = "N/A"
+                val_fmt = safe_format_pct(val) if "Margin" in m or "ROE" in m else safe_format(val)
                 bench_data.append({"Metric": m, "Your Value": val_fmt, "Indicator": icon, "Status": status})
             st.dataframe(pd.DataFrame(bench_data), hide_index=True, use_container_width=True)
 
@@ -430,9 +427,11 @@ def main():
         with tabs[2]:
             st.markdown('<div class="section-header">Detailed Financials</div>', unsafe_allow_html=True)
             st.write("**Ratio Analysis**")
-            st.dataframe(results.set_index('Year').T.style.format("{:.2f}"), use_container_width=True)
-            st.write("**Common Size Analysis** (Fixed)")
-            st.dataframe(common.set_index('Year').T.style.format("{:.1f}%"), use_container_width=True)
+            # CRITICAL FIX: Using safe_format to prevent crashes on None
+            st.dataframe(results.set_index('Year').T.style.format(safe_format), use_container_width=True)
+            
+            st.write("**Common Size Analysis**")
+            st.dataframe(common.set_index('Year').T.style.format(safe_format_pct), use_container_width=True)
 
         with tabs[3]:
             st.markdown('<div class="section-header">CEO Strategic Report</div>', unsafe_allow_html=True)
