@@ -44,90 +44,124 @@ st.markdown("""
 # 12 Industries with specific benchmark ranges (Avg, Leader, Failure)
 # Structure: (Min_Avg, Max_Avg), (Min_Leader, Max_Leader), (Min_Fail, Max_Fail)
 # Note: These are generalized realistic ranges for demonstration.
+# ==========================================
+# MASTER BENCHMARK DATA
+# ==========================================
+
 INDUSTRY_BENCHMARKS = {
     "SaaS / Technology": {
         "gross_margin": ((70, 80), (82, 95), (30, 60)),
         "net_margin": ((10, 20), (25, 40), (-50, 0)),
         "current_ratio": ((1.5, 2.5), (3.0, 5.0), (0, 0.9)),
         "debt_to_equity": ((0.5, 1.0), (0, 0.4), (2.0, 10.0)),
-        "revenue_growth": ((15, 30), (40, 100), (-20, 5))
+        "revenue_growth": ((15, 30), (40, 100), (-20, 5)),
+        "roa": ((5, 10), (15, 25), (-20, 0)),
+        "roe": ((10, 20), (25, 40), (-30, 0)),
+        "operating_margin": ((10, 20), (25, 35), (-20, 0)),
+        "quick_ratio": ((1.5, 2.5), (3.0, 5.0), (0, 1.0)),
+        "debt_to_assets": ((20, 40), (0, 15), (50, 90)),
+        "asset_turnover": ((0.5, 0.8), (0.9, 1.5), (0, 0.4))
     },
-    "Retail / E-commerce": {
+    "Manufacturing": {
+        "gross_margin": ((25, 35), (36, 45), (0, 20)),
+        "net_margin": ((5, 9), (10, 15), (-10, 2)),
+        "operating_margin": ((8, 12), (13, 20), (-5, 5)),
+        "roa": ((5, 8), (9, 15), (-10, 2)),
+        "roe": ((10, 15), (16, 25), (-15, 5)),
+        "current_ratio": ((1.2, 1.8), (2.0, 3.0), (0, 1.0)),
+        "quick_ratio": ((0.8, 1.2), (1.3, 2.0), (0, 0.6)),
+        "operating_cash_flow_ratio": ((0.3, 0.5), (0.6, 1.0), (0, 0.1)),
+        "debt_to_assets": ((30, 50), (10, 29), (60, 90)),
+        "debt_to_equity": ((0.8, 1.5), (0, 0.7), (2.0, 5.0)),
+        "interest_coverage": ((4, 7), (8, 20), (0, 2)),
+        "inventory_turnover": ((5, 7), (8, 12), (0, 3)),
+        "days_sales_inventory": ((50, 70), (30, 49), (90, 200)),
+        "ar_turnover": ((7, 9), (10, 15), (0, 5)),
+        "asset_turnover": ((0.8, 1.1), (1.2, 2.0), (0, 0.6)),
+        "cash_conversion_cycle": ((50, 80), (20, 49), (100, 200)),
+        "revenue_growth": ((3, 8), (9, 20), (-10, 0)),
+        "net_income_growth": ((5, 10), (11, 25), (-15, 0)),
+        "asset_growth": ((3, 6), (7, 15), (-5, 0))
+    },
+    "Healthcare / Biotech": {
+        "gross_margin": ((50, 60), (61, 80), (0, 40)),
+        "net_margin": ((10, 15), (16, 25), (-20, 0)),
+        "operating_margin": ((15, 22), (23, 35), (-15, 5)),
+        "roa": ((6, 10), (11, 20), (-15, 2)),
+        "roe": ((12, 18), (19, 30), (-20, 5)),
+        "current_ratio": ((2.0, 3.0), (3.1, 5.0), (0, 1.5)),
+        "quick_ratio": ((1.5, 2.5), (2.6, 4.0), (0, 1.0)),
+        "debt_to_assets": ((20, 40), (0, 19), (50, 80)),
+        "debt_to_equity": ((0.3, 0.8), (0, 0.2), (1.0, 3.0)),
+        "inventory_turnover": ((3, 5), (6, 10), (0, 2)),
+        "revenue_growth": ((8, 15), (16, 40), (-5, 2))
+    },
+    "Restaurants / Food Service": {
+        "gross_margin": ((60, 70), (71, 80), (30, 55)),
+        "net_margin": ((3, 6), (7, 12), (-5, 1)),
+        "current_ratio": ((0.8, 1.2), (1.3, 2.0), (0, 0.6)),
+        "quick_ratio": ((0.4, 0.8), (0.9, 1.5), (0, 0.3)),
+        "inventory_turnover": ((20, 30), (31, 50), (0, 15)),
+        "cash_conversion_cycle": ((-20, 0), (-50, -21), (10, 50)),
+        "debt_to_equity": ((1.5, 3.0), (0.5, 1.4), (4.0, 10.0))
+    },
+    "Construction / Real Estate": {
+        "gross_margin": ((18, 25), (26, 35), (5, 15)),
+        "net_margin": ((5, 9), (10, 15), (-5, 2)),
+        "current_ratio": ((1.1, 1.5), (1.6, 2.5), (0, 1.0)),
+        "debt_to_equity": ((1.2, 2.0), (0.5, 1.1), (2.5, 6.0)),
+        "inventory_turnover": ((4, 6), (7, 12), (0, 3)),
+        "days_sales_inventory": ((60, 90), (30, 59), (100, 300))
+    },
+    "Energy / Utilities": {
+        "gross_margin": ((35, 45), (46, 60), (10, 25)),
+        "net_margin": ((8, 12), (13, 20), (-5, 5)),
+        "current_ratio": ((1.0, 1.5), (1.6, 2.5), (0, 0.9)),
+        "debt_to_assets": ((40, 55), (20, 39), (60, 90)),
+        "asset_turnover": ((0.4, 0.6), (0.7, 1.0), (0, 0.3))
+    },
+    "Professional Services": {
+        "gross_margin": ((40, 50), (51, 65), (20, 35)),
+        "net_margin": ((10, 15), (16, 25), (-5, 5)),
+        "current_ratio": ((1.5, 2.2), (2.3, 4.0), (0, 1.2)),
+        "roe": ((15, 25), (26, 40), (-10, 5)),
+        "inventory_turnover": ((0, 0), (0, 0), (0, 0)) 
+    },
+    "Transportation / Logistics": {
+        "gross_margin": ((18, 25), (26, 35), (5, 15)),
+        "net_margin": ((4, 7), (8, 12), (-5, 1)),
+        "current_ratio": ((1.1, 1.5), (1.6, 2.5), (0, 1.0)),
+        "debt_to_equity": ((1.0, 1.8), (0.4, 0.9), (2.0, 5.0)),
+        "inventory_turnover": ((12, 18), (19, 30), (0, 10))
+    },
+    "Media / Entertainment": {
+        "gross_margin": ((40, 50), (51, 65), (20, 35)),
+        "net_margin": ((10, 15), (16, 25), (-10, 5)),
+        "current_ratio": ((1.4, 2.0), (2.1, 3.5), (0, 1.1)),
+        "debt_to_equity": ((0.8, 1.5), (0.2, 0.7), (2.0, 5.0))
+    },
+    "Agriculture": {
+        "gross_margin": ((15, 25), (26, 35), (0, 10)),
+        "net_margin": ((4, 8), (9, 14), (-5, 2)),
+        "current_ratio": ((1.3, 1.8), (1.9, 3.0), (0, 1.1)),
+        "debt_to_assets": ((30, 50), (10, 29), (55, 85)),
+        "inventory_turnover": ((2, 4), (5, 8), (0, 1.5))
+    },
+    "Financial Services": {
+        "gross_margin": ((90, 99), (99, 100), (50, 80)),
+        "net_margin": ((15, 22), (23, 35), (0, 10)),
+        "roa": ((1.0, 1.5), (1.6, 3.0), (0, 0.8)), 
+        "roe": ((8, 12), (13, 20), (-5, 5)),
+        "debt_to_equity": ((5.0, 9.0), (2.0, 4.9), (10.0, 20.0))
+    },
+     "Retail / E-commerce": {
         "gross_margin": ((45, 55), (58, 65), (20, 35)),
         "net_margin": ((3, 6), (7, 12), (-10, 1)),
         "current_ratio": ((1.2, 2.0), (2.0, 3.5), (0, 0.9)),
         "debt_to_equity": ((1.0, 2.0), (0.5, 1.0), (3.0, 10.0)),
-        "revenue_growth": ((5, 10), (15, 25), (-15, 0))
-    },
-    "Manufacturing": {
-        "gross_margin": ((25, 35), (38, 45), (10, 20)),
-        "net_margin": ((5, 10), (12, 18), (-15, 2)),
-        "current_ratio": ((1.2, 2.0), (2.5, 4.0), (0, 1.0)),
-        "debt_to_equity": ((0.8, 1.5), (0.2, 0.6), (2.5, 8.0)),
-        "revenue_growth": ((3, 8), (10, 20), (-10, 0))
-    },
-    "Healthcare / Biotech": {
-        "gross_margin": ((50, 70), (75, 90), (20, 40)),
-        "net_margin": ((10, 18), (20, 35), (-100, -5)), # Bio often burns cash
-        "current_ratio": ((2.0, 3.5), (4.0, 8.0), (0, 1.2)),
-        "debt_to_equity": ((0.4, 0.8), (0, 0.3), (1.5, 5.0)),
-        "revenue_growth": ((5, 15), (20, 50), (-10, 0))
-    },
-    "Restaurants / Food Service": {
-        "gross_margin": ((60, 70), (72, 80), (40, 55)),
-        "net_margin": ((3, 6), (8, 15), (-10, 1)),
-        "current_ratio": ((0.8, 1.5), (1.8, 3.0), (0, 0.6)), # Restaurants run lean
-        "debt_to_equity": ((1.5, 3.0), (0.5, 1.2), (4.0, 15.0)),
-        "revenue_growth": ((4, 8), (10, 25), (-20, 0))
-    },
-    "Construction / Real Estate": {
-        "gross_margin": ((15, 25), (28, 35), (5, 12)),
-        "net_margin": ((4, 9), (10, 15), (-15, 2)),
-        "current_ratio": ((1.3, 2.2), (2.5, 4.0), (0, 1.0)),
-        "debt_to_equity": ((1.2, 2.5), (0.5, 1.0), (3.5, 12.0)),
-        "revenue_growth": ((5, 12), (15, 30), (-25, 0))
-    },
-    "Energy / Utilities": {
-        "gross_margin": ((30, 45), (50, 65), (10, 25)),
-        "net_margin": ((8, 12), (15, 20), (-10, 5)),
-        "current_ratio": ((1.0, 1.5), (2.0, 3.0), (0, 0.8)),
-        "debt_to_equity": ((1.0, 2.0), (0.5, 0.9), (3.0, 10.0)),
-        "revenue_growth": ((2, 6), (8, 15), (-10, -2))
-    },
-    "Professional Services": {
-        "gross_margin": ((40, 50), (55, 65), (20, 30)),
-        "net_margin": ((10, 15), (20, 30), (-5, 5)),
-        "current_ratio": ((1.5, 2.5), (3.0, 5.0), (0, 1.1)),
-        "debt_to_equity": ((0.3, 0.8), (0, 0.2), (1.5, 5.0)),
-        "revenue_growth": ((8, 15), (20, 40), (-15, 0))
-    },
-    "Transportation / Logistics": {
-        "gross_margin": ((15, 25), (28, 35), (5, 12)),
-        "net_margin": ((4, 8), (10, 14), (-12, 1)),
-        "current_ratio": ((1.1, 1.6), (1.8, 2.5), (0, 0.9)),
-        "debt_to_equity": ((1.0, 2.0), (0.4, 0.8), (3.0, 9.0)),
-        "revenue_growth": ((4, 10), (12, 20), (-15, -2))
-    },
-    "Media / Entertainment": {
-        "gross_margin": ((35, 45), (50, 65), (15, 25)),
-        "net_margin": ((8, 14), (18, 25), (-20, 0)),
-        "current_ratio": ((1.4, 2.0), (2.5, 4.0), (0, 1.0)),
-        "debt_to_equity": ((0.8, 1.5), (0.2, 0.6), (2.5, 8.0)),
-        "revenue_growth": ((5, 15), (20, 40), (-20, 0))
-    },
-    "Agriculture": {
-        "gross_margin": ((10, 20), (22, 30), (0, 8)),
-        "net_margin": ((3, 7), (8, 12), (-10, 0)),
-        "current_ratio": ((1.2, 2.0), (2.5, 3.5), (0, 0.9)),
-        "debt_to_equity": ((0.5, 1.2), (0.1, 0.4), (2.0, 6.0)),
-        "revenue_growth": ((2, 6), (8, 15), (-10, -2))
-    },
-    "Financial Services": {
-        "gross_margin": ((90, 98), (99, 100), (50, 80)), # Different for banks, treating Rev as Net Interest Inc roughly
-        "net_margin": ((15, 25), (30, 45), (-10, 5)),
-        "current_ratio": ((1.0, 1.0), (1.0, 1.0), (0, 0.0)), # Not relevant for banks usually
-        "debt_to_equity": ((5.0, 8.0), (2.0, 4.0), (10.0, 20.0)),
-        "revenue_growth": ((4, 8), (10, 20), (-10, 0))
+        "revenue_growth": ((5, 10), (15, 25), (-15, 0)),
+        "inventory_turnover": ((4, 8), (9, 15), (0, 3))
+
     }
 }
 
@@ -412,6 +446,129 @@ def get_status_color(value, metric_name, industry_data):
             return "red"   # Lower than avg range = Worse
         else:
             return "gray"  # Within avg range = Neutral
+            def generate_logic_based_insights(metrics_df, industry, industry_data):
+    """
+    Generates detailed textual analysis WITHOUT an API key.
+    Uses extensive if/else logic to construct paragraphs.
+    """
+    latest = metrics_df.iloc[-1]
+    
+    report = []
+    report.append(f"### 🤖 AI Financial Analysis (Synthetic Mode)\n")
+    report.append(f"**Industry Context:** Analyzing against {industry} standards.\n")
+    
+    # 1. Profitability Analysis
+    report.append("#### 💰 Profitability & Growth")
+    gm = latest.get('Gross Margin (%)', np.nan)
+    rev_g = latest.get('Revenue Growth (%)', np.nan)
+    
+    prof_text = ""
+    if pd.isna(gm):
+        prof_text += "Insufficient data to calculate Gross Margin. "
+    else:
+        # Check against average benchmark (index 0)
+        bench_gm = industry_data.get('gross_margin', ((0,0),(0,0),(0,0)))
+        avg_low, avg_high = bench_gm[0]
+        
+        if gm < avg_low:
+            prof_text += f"Gross Margin of {gm:.1f}% is **below the industry average** ({avg_low}-{avg_high}%), suggesting pricing pressure or high direct costs. "
+        elif gm > avg_high:
+            prof_text += f"Gross Margin of {gm:.1f}% is **strong**, exceeding the industry average. "
+        else:
+            prof_text += f"Gross Margin of {gm:.1f}% is within healthy industry norms. "
+            
+    if not pd.isna(rev_g):
+        if rev_g > 0:
+            prof_text += f"Revenue is growing at {rev_g:.1f}% YoY. "
+        else:
+            prof_text += f"WARNING: Revenue contracted by {abs(rev_g):.1f}% this year. "
+            
+    report.append(prof_text)
+    
+    # 2. Liquidity Analysis
+    report.append("#### 💧 Liquidity & Solvency")
+    cr = latest.get('Current Ratio', np.nan)
+    ccc = latest.get('Cash Conversion Cycle (Days)', np.nan)
+    
+    liq_text = ""
+    if not pd.isna(cr):
+        if cr < 1.0:
+            liq_text += f"**CRITICAL:** Current Ratio is {cr:.2f}, indicating the company may struggle to pay short-term obligations. "
+        elif cr < 1.5:
+            liq_text += f"Current Ratio of {cr:.2f} is tight but manageable. "
+        else:
+            liq_text += f"Liquidity is robust with a Current Ratio of {cr:.2f}. "
+            
+    if not pd.isna(ccc):
+        liq_text += f"The Cash Conversion Cycle is {ccc:.0f} days. "
+    
+    report.append(liq_text)
+
+    # 3. Efficiency & Risk
+    report.append("#### ⚙️ Efficiency & Risk")
+    debt_eq = latest.get('Debt to Equity', np.nan)
+    roa = latest.get('ROA (%)', np.nan)
+    
+    eff_text = ""
+    if not pd.isna(debt_eq):
+        if debt_eq > 2.0:
+            eff_text += f"Leverage is high (Debt/Equity: {debt_eq:.2f}), increasing financial risk. "
+        else:
+            eff_text += "Leverage appears conservatively managed. "
+            
+    if not pd.isna(roa):
+        if roa < 0:
+            eff_text += "The company is generating negative returns on its assets. "
+        elif roa > 10:
+            eff_text += "Asset efficiency is excellent, generating over 10% return on assets. "
+            
+    report.append(eff_text)
+    
+    # 4. Recommendations
+    report.append("#### 🚀 Strategic Recommendations")
+    recs = []
+    # Generic logic checks
+    if not pd.isna(gm) and gm < industry_data.get('gross_margin', [(0,0)])[0][0]:
+        recs.append("- **Cost Review:** Audit COGS immediately. Negotiate with suppliers or review pricing strategy.")
+    if not pd.isna(cr) and cr < 1.2:
+        recs.append("- **Cash Preservation:** Immediate focus on cash flow is needed. Delay CapEx.")
+    if not pd.isna(rev_g) and rev_g < 5:
+        recs.append("- **Growth Strategy:** Top-line growth is stagnant. Investigate new marketing channels.")
+    
+    if not recs:
+        recs.append("- Continue monitoring key ratios quarterly.")
+        recs.append("- Benchmark against top competitors to find marginal gains.")
+        
+    report.extend(recs)
+    
+    return "\n".join(report)
+
+def generate_gemini_insights(api_key, metrics_df, industry):
+    """Calls Gemini API for insights."""
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-pro')
+        
+        # Construct Prompt
+        data_str = metrics_df.to_string()
+        prompt = f"""
+        You are a senior financial analyst. Analyze the following financial metrics for a company in the {industry} industry.
+        
+        DATA:
+        {data_str}
+        
+        REQUIREMENTS:
+        1. Executive Summary of financial health.
+        2. Strengths & Weaknesses (cite specific numbers).
+        3. Risk Assessment (identify failure patterns).
+        4. 3-5 Actionable Recommendations.
+        5. Use professional tone.
+        """
+        
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ API Error: {str(e)}. Switching to Logic-Based Analysis..."
 # ==========================================
 # 5. MAIN UI
 # ==========================================
