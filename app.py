@@ -2,36 +2,57 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
 import google.generativeai as genai
 
 # ==========================================
-# 1. CONFIGURATION & PAGE SETUP
+# 1. PAGE CONFIGURATION & STYLING
 # ==========================================
 st.set_page_config(
-    page_title="Financial Statement Analysis",
-    page_icon="📊",
+    page_title="FinSight AI | Pro Analysis",
+    page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Professional CSS Styling
 st.markdown("""
 <style>
+    /* Main Container Padding */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    
+    /* Card Styling */
     .metric-card {
-        background-color: #f0f2f6;
-        border-left: 5px solid #4F46E5;
-        padding: 20px;
+        background-color: #FFFFFF;
+        border: 1px solid #E5E7EB;
         border-radius: 10px;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+        padding: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1rem;
     }
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #1F2937;
+    
+    /* Dark Mode Adjustment for Cards */
+    @media (prefers-color-scheme: dark) {
+        .metric-card {
+            background-color: #262730;
+            border: 1px solid #41424C;
+        }
     }
-    .sub-text {
-        color: #6B7280;
-        font-size: 1.1rem;
+
+    /* Headers */
+    .section-header {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #4F46E5;
+    }
+    
+    /* Tables */
+    .dataframe {
+        font-size: 0.9rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -43,8 +64,40 @@ if 'processed_data' not in st.session_state: st.session_state.processed_data = N
 if 'common_size' not in st.session_state: st.session_state.common_size = None
 
 # ==========================================
-# 2. BENCHMARKS & MAPPING
+# 2. INDUSTRY INTELLIGENCE (CONTEXT LAYER)
 # ==========================================
+
+INDUSTRY_CONTEXT = {
+    "SaaS / Software": {
+        "focus": "Recurring revenue, burn rate, and customer acquisition efficiency.",
+        "good": "High Gross Margins (70%+), High Growth (>20%).",
+        "bad": "Declining revenue, high churn, low gross margins.",
+        "prompt_instruction": "Focus heavily on Growth and Gross Margins. Net losses are acceptable IF revenue growth is >20%."
+    },
+    "Manufacturing": {
+        "focus": "Asset utilization, inventory management, and cost control.",
+        "good": "Stable Gross Margins (25-35%), Inventory Turnover > 6x.",
+        "bad": "Bloated inventory (low turnover), high debt-to-assets.",
+        "prompt_instruction": "Focus strictly on Efficiency (Inventory/Asset Turnover) and Solvency. Asset-heavy businesses must have stable cash flow."
+    },
+    "Retail / E-commerce": {
+        "focus": "Inventory velocity, margins, and cash conversion cycle.",
+        "good": "Quick inventory turnover, low cash conversion cycle.",
+        "bad": "Inventory buildup, razor-thin net margins (<2%).",
+        "prompt_instruction": "Analyze Liquidity deeply. Retailers die when they run out of cash to buy inventory."
+    },
+    # Default fallback
+    "General": {
+        "focus": "Profitability, liquidity, and solvency.",
+        "good": "Positive trends in revenue and income.",
+        "bad": "Declining margins, high debt.",
+        "prompt_instruction": "Provide a balanced analysis of all financial statements."
+    }
+}
+
+# Add the rest of the industries pointing to 'General' or specific if needed
+for ind in ["Healthcare", "Construction", "Energy", "Real Estate", "Financial Services", "Consumer Goods", "Telecom", "Automotive", "Hospitality"]:
+    if ind not in INDUSTRY_CONTEXT: INDUSTRY_CONTEXT[ind] = INDUSTRY_CONTEXT["General"]
 
 INDUSTRY_BENCHMARKS = {
     "Manufacturing": {"Gross Margin": (25, 35), "Net Margin": (5, 10), "Current Ratio": (1.2, 2.0), "Quick Ratio": (0.8, 1.2), "Debt-to-Equity": (0.5, 1.5), "ROE": (10, 15)},
@@ -85,11 +138,10 @@ COLUMN_MAPPING = {
 }
 
 # ==========================================
-# 3. DATA PROCESSING (SMART ORIENTATION FIX)
+# 3. ROBUST DATA PROCESSING
 # ==========================================
 
 def clean_currency(x):
-    """Converts '$1,000.00' or '1,000' to float 1000.0"""
     if isinstance(x, str):
         clean = x.replace('$', '').replace(',', '').replace(' ', '')
         if '(' in clean and ')' in clean: clean = '-' + clean.replace('(', '').replace(')', '')
@@ -98,20 +150,16 @@ def clean_currency(x):
     return x
 
 def normalize_and_clean(df):
-    """Detects if Years are Rows or Columns and standardizes to Vertical format."""
-    
-    # 1. Check Orientation: Does the first column contain metrics like "Revenue"?
-    # If so, the years are probably in the header (columns). We need to TRANSPOSE.
+    # 1. Orientation Fix
     first_col_vals = df.iloc[:, 0].astype(str).str.lower().tolist()
     metric_hits = sum(1 for v in first_col_vals if 'revenue' in v or 'net income' in v or 'assets' in v)
     
     if metric_hits > 0:
-        # It's Horizontal (Years are headers). Flip it!
         df = df.set_index(df.columns[0]).T
         df.reset_index(inplace=True)
         df.rename(columns={'index': 'Year'}, inplace=True)
     
-    # 2. Standard Cleaning
+    # 2. Standardize Headers
     df.columns = [str(c).strip().lower() for c in df.columns]
     renamed = {}
     
@@ -124,28 +172,24 @@ def normalize_and_clean(df):
                             renamed[col] = standard
                             break
                     if col in renamed: break
-    
     df = df.rename(columns=renamed)
-    df = df.loc[:, ~df.columns.duplicated()] # Remove duplicates
+    df = df.loc[:, ~df.columns.duplicated()]
     
-    # 3. Ensure 'Year' exists and is numeric
+    # 3. Year Detection
     if 'Year' not in df.columns:
-        # Try to find a column that looks like a year (2019, 2020)
         for col in df.columns:
             try:
-                # Check if sample value is a year-like number
                 sample = float(df[col].iloc[0])
                 if 1900 < sample < 2100:
                     df.rename(columns={col: 'Year'}, inplace=True)
                     break
             except: pass
             
-    # 4. Force Numeric
+    # 4. Numeric Force
     for col in df.columns:
         if col != 'Year':
             df[col] = df[col].apply(clean_currency)
             df[col] = pd.to_numeric(df[col], errors='coerce')
-            
     return df
 
 def safe_div(n, d):
@@ -164,24 +208,27 @@ def safe_pct(n, d):
 
 def calculate_metrics(df):
     results = df.copy()
-    if 'Year' in results.columns:
-        results = results.sort_values('Year')
-    
+    if 'Year' in results.columns: results = results.sort_values('Year')
     def get(col): return results[col] if col in results else pd.Series([None]*len(results))
 
-    # Metrics
+    # Profitability
     results['Gross Margin'] = results.apply(lambda x: safe_pct(x.get('Revenue',0) - x.get('COGS',0), x.get('Revenue')), axis=1)
     results['Net Margin'] = results.apply(lambda x: safe_pct(x.get('Net Income'), x.get('Revenue')), axis=1)
     results['ROA'] = results.apply(lambda x: safe_pct(x.get('Net Income'), x.get('Total Assets')), axis=1)
     results['ROE'] = results.apply(lambda x: safe_pct(x.get('Net Income'), x.get('Equity')), axis=1)
+    
+    # Liquidity
     results['Current Ratio'] = results.apply(lambda x: safe_div(x.get('Current Assets'), x.get('Current Liabilities')), axis=1)
     results['Quick Ratio'] = results.apply(lambda x: safe_div(
         (x.get('Cash', 0) or 0) + (x.get('Accounts Receivable', 0) or 0) + (x.get('Short Term Investments', 0) or 0),
         x.get('Current Liabilities')
     ), axis=1)
+    
+    # Leverage
     results['Debt-to-Assets'] = results.apply(lambda x: safe_pct(x.get('Total Liabilities'), x.get('Total Assets')), axis=1)
     results['Debt-to-Equity'] = results.apply(lambda x: safe_div(x.get('Total Liabilities'), x.get('Equity')), axis=1)
 
+    # Growth
     for m in ['Revenue', 'Net Income', 'Total Assets']:
         if m in results: results[f'{m} Growth'] = results[m].pct_change() * 100
 
@@ -198,86 +245,96 @@ def calculate_common_size(df):
     return common
 
 # ==========================================
-# 5. VISUALS & AI LOGIC
+# 5. AI & VISUALS
 # ==========================================
 
 def get_traffic_light(val, metric, industry_data):
-    if val is None or pd.isna(val): return "⚪", "No Data", ""
+    if val is None or pd.isna(val): return "⚪", "No Data"
     ranges = industry_data.get(metric)
-    if not ranges: return "⚪", "No Benchmark", ""
+    if not ranges: return "⚪", "No Benchmark"
     low, high = ranges
-    is_inverse = metric in ['Debt-to-Equity', 'Debt-to-Assets']
-    if not is_inverse:
-        if val >= high: return "🟢", "Leader", f"+{val-high:.1f} pts"
-        elif val >= low: return "🟡", "Average", "In Range"
-        else: return "🔴", "Weak/Risk", f"{val-low:.1f} pts"
-    else:
-        if val <= low: return "🟢", "Leader", "Low Risk"
-        elif val <= high: return "🟡", "Average", "In Range"
-        else: return "🔴", "Weak/Risk", "High Risk"
+    
+    # Inverse metrics (lower is better)
+    if metric in ['Debt-to-Equity', 'Debt-to-Assets']:
+        if val <= low: return "🟢", "Strong"
+        elif val <= high: return "🟡", "Average"
+        else: return "🔴", "Risk"
+    
+    # Standard metrics (higher is better)
+    if val >= high: return "🟢", "Strong"
+    elif val >= low: return "🟡", "Average"
+    else: return "🔴", "Weak"
 
-def get_gemini_analysis(api_key, industry, data_str):
+def get_gemini_analysis(api_key, industry, data_str, context):
     if not api_key: return None
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-pro')
+        
+        # PROMPT ENGINEERING
         prompt = f"""
-        Act as a CFO. Analyze this {industry} company.
-        DATA:
+        You are a seasoned CFO Consultant specializing in the {industry} sector.
+        
+        INDUSTRY CONTEXT:
+        {context['focus']}
+        SUCCESS INDICATORS: {context['good']}
+        RISK INDICATORS: {context['bad']}
+        INSTRUCTION: {context['prompt_instruction']}
+        
+        FINANCIAL DATA:
         {data_str}
         
-        INSTRUCTIONS:
-        1. Executive Summary (3 bullets).
-        2. Deep Dive (Profitability, Liquidity, Growth).
-        3. Strategic Recommendations (3 items).
+        TASK:
+        Write a strategic assessment.
+        1. **Executive Scorecard:** (3 Bullet points on the most critical status).
+        2. **Industry Specific Deep Dive:** Analyze the specific metrics that matter for {industry}.
+        3. **Risk Analysis:** Identify specific red flags based on the data provided.
+        4. **Strategic Roadmap:** 3 actionable, prioritized recommendations.
+        
+        TONE: Professional, Direct, Insightful.
         """
         return model.generate_content(prompt).text
     except: return None
 
 def get_mock_analysis(industry, df):
+    # Smart Mock logic based on last year's Net Income
+    try:
+        latest_ni = df.iloc[-1].get('Net Income', 0)
+        status = "struggling" if latest_ni < 0 else "growing"
+    except: status = "analyzing"
+    
     return f"""
-    ### 📊 Executive Summary (Mock Analysis)
-    * **Profitability:** Margins are currently stable but trail industry leaders.
-    * **Liquidity:** The company maintains a defensive cash position.
-    * **Growth:** Revenue shows moderate volatility over the 5-year period.
+    ### 📝 Preliminary Analyst Notes (Mock Mode)
+    * **Industry:** {industry}
+    * **Observation:** The company appears to be {status} based on the latest Net Income figures.
     
-    ---
-    ### 🔍 Detailed Deep Dive
+    #### 🔍 Key Observations
+    1. **Trend Analysis:** Review the Visual Trends tab to see if Revenue and Profit are correlated.
+    2. **Liquidity Check:** Ensure the Current Ratio is above 1.5x (See Benchmarks).
+    3. **Capital Structure:** Check Debt-to-Equity to ensure leverage is sustainable.
     
-    **1. Profitability & Efficiency**
-    The Gross Margin indicates standard production efficiency for the {industry} sector. However, operating expenses should be audited to improve the bottom line.
-    
-    **2. Liquidity & Solvency**
-    Current and Quick ratios suggest the company can meet short-term obligations, though inventory turnover may be tying up working capital.
-    
-    **3. Growth Trajectory**
-    While top-line revenue is present, net income growth has not perfectly correlated, suggesting "empty calories" revenue growth in certain years.
-    
-    ---
-    ### 🚀 Strategic Recommendations
-    1. **Optimize COGS:** Renegotiate with primary suppliers to boost Gross Margin by 1-2%.
-    2. **Debt Structuring:** Consider refinancing long-term debt if interest rates are favorable.
-    3. **Cash Flow:** Focus on reducing Days Sales Outstanding (DSO) to improve cash conversion.
+    *(To unlock the full AI Strategic Report, please enter a Gemini API Key in the sidebar)*
     """
 
 def chat_with_data(user_query, df_context, api_key):
-    if not api_key:
-        return f"**[Mock AI]:** Based on the data, I see that your latest Net Margin is {df_context.iloc[-1].get('Net Margin', 'N/A'):.1f}%. (To get real AI answers, please add an API Key)."
+    if not api_key: return "I need an API Key to answer specific questions. (Mock Mode Active)"
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-pro')
-        prompt = f"Context:\n{df_context.to_string()}\nQuestion: {user_query}\nAnswer professionally in 2-3 sentences."
+        prompt = f"Context:\n{df_context.to_string()}\nQuestion: {user_query}\nAnswer as a CFO in 2 sentences."
         return model.generate_content(prompt).text
-    except: return "I'm having trouble connecting to the AI right now."
+    except: return "Connection Error."
 
 # ==========================================
 # 6. MAIN APPLICATION
 # ==========================================
 
 def main():
+    # --- SIDEBAR ---
     with st.sidebar:
-        st.header("⚙️ Configuration")
+        st.header("⚙️ Settings")
         api_key = st.text_input("Gemini API Key (Optional)", type="password")
+        st.caption("Leave blank to use Mock Mode.")
         st.divider()
         
         def clear_cache():
@@ -285,100 +342,140 @@ def main():
             st.session_state.analysis_results = None
             st.session_state.chat_history = []
             
-        uploaded_file = st.file_uploader("Upload Financials", type=['csv', 'xlsx'], on_change=clear_cache)
-        selected_industry = st.selectbox("Select Industry", list(INDUSTRY_BENCHMARKS.keys()))
+        uploaded_file = st.file_uploader("📂 Upload Financials", type=['csv', 'xlsx'], on_change=clear_cache)
+        selected_industry = st.selectbox("🏭 Select Industry", list(INDUSTRY_BENCHMARKS.keys()))
         
         if st.session_state.processed_data is not None:
-            if st.button("🚀 Analyze Financials", type="primary"):
-                with st.spinner("Crunching Numbers..."):
+            if st.button("🚀 Analyze Data", type="primary", use_container_width=True):
+                with st.spinner("Processing Financial Models..."):
                     df_clean = normalize_and_clean(st.session_state.processed_data)
                     st.session_state.analysis_results = calculate_metrics(df_clean)
                     st.session_state.common_size = calculate_common_size(df_clean)
                     st.rerun()
 
-    st.markdown('<div class="main-header">Financial Statement Analysis</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-text">Institutional-grade benchmarking and AI insights</div>', unsafe_allow_html=True)
-    st.markdown("---")
-
+    # --- HERO SECTION ---
     if not uploaded_file and st.session_state.analysis_results is None:
-        st.info("👋 Welcome! Upload your balance sheet, income statement, or cash flow to begin.")
+        st.title("FinSight AI")
+        st.markdown("### Institutional-Grade Financial Analysis")
+        st.markdown("---")
+        
         c1, c2, c3 = st.columns(3)
-        with c1: st.markdown('<div class="metric-card"><h3>📥 1. Upload</h3><p>Upload any CSV or Excel file.</p></div>', unsafe_allow_html=True)
-        with c2: st.markdown('<div class="metric-card"><h3>⚖️ 2. Benchmark</h3><p>Compare against 12+ industries.</p></div>', unsafe_allow_html=True)
-        with c3: st.markdown('<div class="metric-card"><h3>🤖 3. Insights</h3><p>Get AI-powered executive summaries.</p></div>', unsafe_allow_html=True)
+        with c1: st.markdown('<div class="metric-card"><h4>📥 1. Universal Import</h4><p>Upload standard or messy Excel/CSV files. We fix the formatting automatically.</p></div>', unsafe_allow_html=True)
+        with c2: st.markdown('<div class="metric-card"><h4>🧠 2. Contextual AI</h4><p>Our engine adjusts its analysis criteria based on the specific industry you select.</p></div>', unsafe_allow_html=True)
+        with c3: st.markdown('<div class="metric-card"><h4>🚦 3. Smart Benchmarking</h4><p>Instant visual feedback on where you stand against industry leaders.</p></div>', unsafe_allow_html=True)
+        return
 
-    if uploaded_file and st.session_state.processed_data is None:
-        try:
-            if uploaded_file.name.endswith('.csv'): df = pd.read_csv(uploaded_file)
-            else: df = pd.read_excel(uploaded_file)
-            st.session_state.processed_data = df
-            st.success("✅ File Loaded Successfully!")
-        except Exception as e: st.error(f"Error: {e}")
-
+    # --- DASHBOARD ---
     if st.session_state.analysis_results is not None:
         results = st.session_state.analysis_results
         common = st.session_state.common_size
         latest = results.iloc[-1]
         
-        t1, t2, t3, t4, t5 = st.tabs(["🚦 Benchmarks", "📊 Visual Trends", "🔬 Deep Data", "🤖 AI Report", "💬 Assistant"])
+        st.title(f"📊 Financial Analysis: {selected_industry}")
         
-        with t1:
-            st.subheader(f"Performance vs. {selected_industry}")
+        # KPI ROW
+        k1, k2, k3, k4 = st.columns(4)
+        with k1: 
+            val = latest.get('Revenue Growth')
+            st.metric("Revenue Growth", f"{val:.1f}%" if pd.notna(val) else "N/A", delta_color="normal")
+        with k2: 
+            val = latest.get('Net Margin')
+            st.metric("Net Margin", f"{val:.1f}%" if pd.notna(val) else "N/A")
+        with k3: 
+            val = latest.get('Current Ratio')
+            st.metric("Current Ratio", f"{val:.2f}x" if pd.notna(val) else "N/A")
+        with k4: 
+            val = latest.get('ROE')
+            st.metric("ROE", f"{val:.1f}%" if pd.notna(val) else "N/A")
+
+        st.markdown("---")
+        
+        # TABS
+        tabs = st.tabs(["🚦 Scorecard", "📈 Trends", "📋 Deep Data", "🤖 Strategic Report", "💬 AI Chat"])
+        
+        # TAB 1: SCORECARD
+        with tabs[0]:
+            st.markdown('<div class="section-header">Industry Benchmarking</div>', unsafe_allow_html=True)
+            
             bench_data = []
             metrics = ["Gross Margin", "Net Margin", "Current Ratio", "Quick Ratio", "Debt-to-Equity", "ROE"]
             for m in metrics:
                 val = latest.get(m)
-                icon, status, dist = get_traffic_light(val, m, INDUSTRY_BENCHMARKS[selected_industry])
-                if val is None or pd.isna(val): val_fmt = "N/A"
-                else: val_fmt = f"{val:.1f}%" if "Margin" in m or "ROE" in m else f"{val:.2f}"
-                bench_data.append({"Metric": m, "Value": val_fmt, "Status": icon, "Rating": status, "Variance": dist})
-            st.dataframe(pd.DataFrame(bench_data), use_container_width=True, hide_index=True)
+                icon, status = get_traffic_light(val, m, INDUSTRY_BENCHMARKS[selected_industry])
+                val_fmt = f"{val:.1f}%" if "Margin" in m or "ROE" in m else f"{val:.2f}"
+                if pd.isna(val): val_fmt = "N/A"
+                bench_data.append({"Metric": m, "Value": val_fmt, "Indicator": icon, "Status": status})
             
-        with t2:
+            b_df = pd.DataFrame(bench_data)
+            st.dataframe(b_df, hide_index=True, use_container_width=True)
+
+        # TAB 2: TRENDS
+        with tabs[1]:
+            st.markdown('<div class="section-header">Visual Trajectory</div>', unsafe_allow_html=True)
             c1, c2 = st.columns(2)
+            
             with c1:
                 if 'Revenue' in results and 'Net Income' in results:
                     fig = go.Figure()
                     fig.add_trace(go.Bar(x=results['Year'], y=results['Revenue'], name='Revenue', marker_color='#6366F1'))
                     fig.add_trace(go.Scatter(x=results['Year'], y=results['Net Income'], name='Net Income', line=dict(color='#10B981', width=3)))
-                    fig.update_layout(title="Revenue vs Profit", legend=dict(orientation="h"))
+                    fig.update_layout(title="Top Line vs Bottom Line", height=400, template="plotly_white")
                     st.plotly_chart(fig, use_container_width=True)
+                    
             with c2:
                 if 'Current Ratio' in results:
                     fig = go.Figure()
                     fig.add_trace(go.Scatter(x=results['Year'], y=results['Current Ratio'], name='Current Ratio', line=dict(color='#F59E0B', width=3)))
-                    if 'Quick Ratio' in results: fig.add_trace(go.Scatter(x=results['Year'], y=results['Quick Ratio'], name='Quick Ratio', line=dict(dash='dot')))
-                    fig.update_layout(title="Liquidity Trend", legend=dict(orientation="h"))
+                    fig.add_trace(go.Scatter(x=results['Year'], y=[1.0]*len(results), name='Danger Zone', line=dict(color='red', dash='dot')))
+                    fig.update_layout(title="Liquidity Health (Target > 1.0)", height=400, template="plotly_white")
                     st.plotly_chart(fig, use_container_width=True)
 
-        with t3:
-            st.dataframe(results.set_index('Year').T.style.format(lambda x: "N/A" if pd.isna(x) else "{:.2f}".format(x)))
-            st.write("Common Size (% of Rev/Assets)")
-            st.dataframe(common.set_index('Year').T.style.format(lambda x: "N/A" if pd.isna(x) else "{:.1f}%".format(x)))
+        # TAB 3: DATA (STYLED)
+        with tabs[2]:
+            st.markdown('<div class="section-header">Financial Statements & Ratios</div>', unsafe_allow_html=True)
+            
+            st.write("### Ratio Analysis")
+            # Gradient styling for better readability
+            st.dataframe(
+                results.set_index('Year').T.style.background_gradient(cmap="Blues", axis=1).format("{:.2f}"), 
+                use_container_width=True
+            )
+            
+            st.write("### Common Size Analysis")
+            st.dataframe(
+                common.set_index('Year').T.style.background_gradient(cmap="Greens", axis=1).format("{:.1f}%"), 
+                use_container_width=True
+            )
 
-        with t4:
-            st.subheader("CEO-Level Financial Report")
-            if st.button("Generate Full Report"):
-                with st.spinner("Writing Executive Brief..."):
-                    if api_key:
-                        analysis = get_gemini_analysis(api_key, selected_industry, results.to_string())
-                        if analysis: st.markdown(analysis)
-                        else: st.markdown(get_mock_analysis(selected_industry, results))
-                    else: st.markdown(get_mock_analysis(selected_industry, results))
+        # TAB 4: AI REPORT
+        with tabs[3]:
+            st.markdown('<div class="section-header">AI Strategic Assessment</div>', unsafe_allow_html=True)
+            if st.button("Generate Pro Report", type="primary"):
+                with st.spinner("Consulting AI Expert..."):
+                    context = INDUSTRY_CONTEXT.get(selected_industry, INDUSTRY_CONTEXT["General"])
+                    report = get_gemini_analysis(api_key, selected_industry, results.to_string(), context)
+                    
+                    if report:
+                        st.markdown(report)
+                    else:
+                        st.info("API Key missing or invalid. Showing Mock Report.")
+                        st.markdown(get_mock_analysis(selected_industry, results))
 
-        with t5:
-            st.subheader("💬 AI Financial Assistant")
+        # TAB 5: CHAT
+        with tabs[4]:
+            st.markdown('<div class="section-header">CFO Assistant</div>', unsafe_allow_html=True)
+            
             for msg in st.session_state.chat_history:
                 st.chat_message(msg['role']).write(msg['content'])
-            
-            if prompt := st.chat_input("Ask a question..."):
+                
+            if prompt := st.chat_input("Ask about the data..."):
                 st.session_state.chat_history.append({'role':'user', 'content':prompt})
                 st.chat_message('user').write(prompt)
                 
                 with st.spinner("Thinking..."):
-                    response = chat_with_data(prompt, results, api_key)
-                    st.session_state.chat_history.append({'role':'assistant', 'content':response})
-                    st.chat_message('assistant').write(response)
+                    resp = chat_with_data(prompt, results, api_key)
+                    st.session_state.chat_history.append({'role':'assistant', 'content':resp})
+                    st.chat_message('assistant').write(resp)
 
 if __name__ == "__main__":
     main()
