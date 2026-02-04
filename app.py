@@ -326,7 +326,19 @@ def main():
         
         st.divider()
         st.subheader("1. Upload Data")
-        uploaded_file = st.file_uploader("Upload CSV or Excel", type=['csv', 'xlsx'])
+        
+        # Function to clear memory when a new file is uploaded
+        def clear_submit():
+            st.session_state.processed_data = None
+            st.session_state.analysis_results = None
+            
+        # The file uploader with the "on_change" trigger
+        uploaded_file = st.file_uploader(
+            "Upload CSV or Excel", 
+            type=['csv', 'xlsx'], 
+            on_change=clear_submit, 
+            key="new_upload"
+        )
         
         st.write("OR")
         
