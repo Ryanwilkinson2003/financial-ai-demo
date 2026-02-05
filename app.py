@@ -544,7 +544,49 @@ def generate_gemini_insights(api_key, metrics_df, industry):
         return response.text
     except Exception as e:
         return f"⚠️ API Error: {str(e)}. Switching to Logic-Based Analysis..."
+# ==========================================
+# 5. CHATBOT FUNCTIONALITY
+# ==========================================
 
+def chat_with_data(api_key, user_query, metrics_df, industry):
+    """Handles chat interaction."""
+    if not api_key:
+        # Fallback for No API Key (Simple Logic)
+        user_query = user_query.lower()
+        if "gross margin" in user_query:
+            val = metrics_df['Gross Margin (%)'].iloc[-1]
+            return f"The current Gross Margin is {val:.1f}%."
+        elif "net income" in user_query:
+            val = metrics_df['Net Margin (%)'].iloc[-1]
+            return f"The Net Margin is {val:.1f}%."
+        elif "current ratio" in user_query:
+            val = metrics_df['Current Ratio'].iloc[-1]
+            return f"The Current Ratio is {val:.2f}."
+        elif "debt" in user_query:
+            val = metrics_df['Debt to Equity'].iloc[-1]
+            return f"Debt to Equity ratio is {val:.2f}."
+        else:
+            return "I am in 'Synthetic Mode' (No API Key). I can only answer basic questions about margins, ratios, and debt. Please provide an API key for full AI chat."
+
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-pro')
+        
+        # Context includes the full data
+        data_str = metrics_df.to_string()
+        prompt = f"""
+        Context: You are a financial assistant analyzing a {industry} company.
+        Financial Data:
+        {data_str}
+        
+        User Question: {user_query}
+        
+        Answer concisely using the data provided.
+        """
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Error: {str(e)}"
 # ==========================================
 # 5. MAIN UI
 # ==========================================
@@ -672,7 +714,41 @@ def main():
                         analysis = generate_logic_based_insights(metrics_df, industry, INDUSTRY_BENCHMARKS[industry])
                         st.markdown(analysis)
                         st.caption("Generated using Logic-Based Analyst (No API Key Provided)")
+# -------------------------------------------
+            # NEW: Interactive Chatbot Section
+            # -------------------------------------------
+            st.divider()
+            st.header("💬 Chat with Financial AI")
+            st.markdown("Ask specific questions about the data (e.g., 'Why is the current ratio low?', 'How is debt trending?').")
 
+            # Initialize chat history
+            if "messages" not in st.session_state:
+                st.session_state.messages = []
+
+            # Display chat messages from history on app rerun
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+            # React to user input
+            if prompt := st.chat_input("Ask a question about your financial data..."):
+                # Display user message in chat message container
+                st.chat_message("user").markdown(prompt)
+                # Add user message to chat history
+                st.session_state.messages.append({"role": "user", "content": prompt})
+
+                with st.spinner("Thinking..."):
+                    response = chat_with_data(api_key, prompt, metrics_df, industry)
+                
+                # Display assistant response in chat message container
+                with st.chat_message("assistant"):
+                    st.markdown(response)
+                # Add assistant response to chat history
+                st.session_state.messages.append({"role": "assistant", "content": response})
+
+            # -------------------------------------------
+            # End of Chatbot Section
+            # -------------------------------------------
             # 6. Raw Data Expander
             with st.expander("View Raw Data & Mappings"):
                 st.write("### Normalized Data Used for Calc")
