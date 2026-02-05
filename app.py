@@ -519,39 +519,44 @@ def generate_logic_based_insights(metrics_df, industry, industry_data):
     return "\n".join(report)
 
 def generate_gemini_insights(api_key, metrics_df, industry):
-    """Calls Gemini API for insights."""
-    try:
-        genai.configure(api_key=api_key)
-        # Revert to the standard legacy model
-        model = genai.GenerativeModel('gemini-pro')
-        
-        # Construct Prompt
-        data_str = metrics_df.to_string()
-        prompt = f"""
-        You are a senior financial analyst. Analyze the following financial metrics for a company in the {industry} industry.
-        
-        DATA:
-        {data_str}
-        
-        REQUIREMENTS:
-        1. Executive Summary of financial health.
-        2. Strengths & Weaknesses (cite specific numbers).
-        3. Risk Assessment (identify failure patterns).
-        4. 3-5 Actionable Recommendations.
-        5. Use professional tone.
-        """
-        
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"⚠️ API Error: {str(e)}. Switching to Logic-Based Analysis..."
+    """Calls Gemini API for insights with Model Fallback."""
+    genai.configure(api_key=api_key)
+    data_str = metrics_df.to_string()
+    
+    prompt = f"""
+    You are a senior financial analyst. Analyze the following financial metrics for a company in the {industry} industry.
+    
+    DATA:
+    {data_str}
+    
+    REQUIREMENTS:
+    1. Executive Summary of financial health.
+    2. Strengths & Weaknesses (cite specific numbers).
+    3. Risk Assessment (identify failure patterns).
+    4. 3-5 Actionable Recommendations.
+    5. Use professional tone.
+    """
+    
+    # Try Flash first (Fastest/Newest), then Fallback to Pro (Old/Reliable)
+    models_to_try = ['gemini-1.5-flash', 'gemini-pro']
+    
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception:
+            continue # If this model fails, try the next one immediately
+            
+    # If all fail:
+    return "⚠️ API Error: Could not connect to Gemini 1.5 OR Gemini Pro. Please check your API Key permissions."
 
 # ==========================================
 # 5. CHATBOT FUNCTIONALITY
 # ==========================================
 
 def chat_with_data(api_key, user_query, metrics_df, industry):
-    """Handles chat interaction."""
+    """Handles chat interaction with Model Fallback."""
     if not api_key:
         # Fallback for No API Key (Simple Logic)
         user_query = user_query.lower()
@@ -570,26 +575,31 @@ def chat_with_data(api_key, user_query, metrics_df, industry):
         else:
             return "I am in 'Synthetic Mode' (No API Key). I can only answer basic questions about margins, ratios, and debt. Please provide an API key for full AI chat."
 
-    try:
-        genai.configure(api_key=api_key)
-        # Revert to the standard legacy model
-        model = genai.GenerativeModel('gemini-pro')
-        
-        # Context includes the full data
-        data_context = metrics_df.to_string()
-        prompt = f"""
-        Context: You are a financial assistant analyzing a {industry} company.
-        Financial Data:
-        {data_context}
-        
-        User Question: {user_query}
-        
-        Answer concisely using the data provided.
-        """
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        return f"Error: {str(e)}"
+    genai.configure(api_key=api_key)
+    data_context = metrics_df.to_string()
+    
+    prompt = f"""
+    Context: You are a financial assistant analyzing a {industry} company.
+    Financial Data:
+    {data_context}
+    
+    User Question: {user_query}
+    
+    Answer concisely using the data provided.
+    """
+    
+    # Try Flash first, then Pro
+    models_to_try = ['gemini-1.5-flash', 'gemini-pro']
+    
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception:
+            continue # Try next model
+            
+    return "Error: Could not connect to Google AI. Check API Key."
 # ==========================================
 # 5. MAIN UI
 # ==========================================
