@@ -522,7 +522,7 @@ def generate_gemini_insights(api_key, metrics_df, industry):
     """Calls Gemini API for insights."""
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         # Construct Prompt
         data_str = metrics_df.to_string()
@@ -570,7 +570,7 @@ def chat_with_data(api_key, user_query, metrics_df, industry):
 
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
         # Context includes the full data
         data_str = metrics_df.to_string()
