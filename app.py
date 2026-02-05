@@ -518,45 +518,86 @@ def generate_logic_based_insights(metrics_df, industry, industry_data):
     
     return "\n".join(report)
 
-def generate_gemini_insights(api_key, metrics_df, industry):
-    """Calls Gemini API for insights with Model Fallback."""
-    genai.configure(api_key=api_key)
-    data_str = metrics_df.to_string()
-    
-    prompt = f"""
-    You are a senior financial analyst. Analyze the following financial metrics for a company in the {industry} industry.
-    
-    DATA:
-    {data_str}
-    
-    REQUIREMENTS:
-    1. Executive Summary of financial health.
-    2. Strengths & Weaknesses (cite specific numbers).
-    3. Risk Assessment (identify failure patterns).
-    4. 3-5 Actionable Recommendations.
-    5. Use professional tone.
+# ==========================================
+# 4b. AI HELPER FUNCTIONS (SELF-HEALING)
+# ==========================================
+
+def get_valid_model(api_key):
     """
-    
-    # Try Flash first (Fastest/Newest), then Fallback to Pro (Old/Reliable)
-    models_to_try = ['gemini-1.5-flash', 'gemini-pro']
-    
-    for model_name in models_to_try:
-        try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
-            return response.text
-        except Exception:
-            continue # If this model fails, try the next one immediately
+    Asks Google which models are actually available for this API Key
+    and picks the best one automatically.
+    """
+    try:
+        genai.configure(api_key=api_key)
+        # List all models available to this key
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        # Priority list (Try newer/faster models first)
+        preferred_order = [
+            'models/gemini-1.5-flash',
+            'models/gemini-1.5-flash-latest',
+            'models/gemini-1.5-pro',
+            'models/gemini-pro',
+            'models/gemini-1.0-pro'
+        ]
+        
+        # Check if we have any of the preferred ones
+        for model_name in preferred_order:
+            if model_name in available_models:
+                return model_name # Found the best match!
+        
+        # If none of our favorites exist, just take the first available one
+        if available_models:
+            return available_models[0]
             
-    # If all fail:
-    return "⚠️ API Error: Could not connect to Gemini 1.5 OR Gemini Pro. Please check your API Key permissions."
+    except Exception as e:
+        # If we can't even list models, the Key is likely wrong or blocked
+        return None
+        
+    return 'models/gemini-1.5-flash' # Default fallback
 
 # ==========================================
-# 5. CHATBOT FUNCTIONALITY
+# 5. AI CORE FUNCTIONS
 # ==========================================
+
+def generate_gemini_insights(api_key, metrics_df, industry):
+    """Calls Gemini API with auto-detected model."""
+    try:
+        # 1. Find a working model
+        valid_model_name = get_valid_model(api_key)
+        
+        if not valid_model_name:
+            return "⚠️ API Error: Your API Key is valid, but Google says you have no access to ANY models. This usually means your Google Cloud Project needs 'Generative Language API' enabled."
+
+        # 2. Configure and Run
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(valid_model_name)
+        
+        data_str = metrics_df.to_string()
+        prompt = f"""
+        You are a senior financial analyst. Analyze the following financial metrics for a company in the {industry} industry.
+        
+        DATA:
+        {data_str}
+        
+        REQUIREMENTS:
+        1. Executive Summary of financial health.
+        2. Strengths & Weaknesses (cite specific numbers).
+        3. Risk Assessment (identify failure patterns).
+        4. 3-5 Actionable Recommendations.
+        5. Use professional tone.
+        """
+        
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ Critical Error: {str(e)}"
 
 def chat_with_data(api_key, user_query, metrics_df, industry):
-    """Handles chat interaction with Model Fallback."""
+    """Handles chat interaction with auto-detected model."""
     if not api_key:
         # Fallback for No API Key (Simple Logic)
         user_query = user_query.lower()
@@ -575,31 +616,30 @@ def chat_with_data(api_key, user_query, metrics_df, industry):
         else:
             return "I am in 'Synthetic Mode' (No API Key). I can only answer basic questions about margins, ratios, and debt. Please provide an API key for full AI chat."
 
-    genai.configure(api_key=api_key)
-    data_context = metrics_df.to_string()
-    
-    prompt = f"""
-    Context: You are a financial assistant analyzing a {industry} company.
-    Financial Data:
-    {data_context}
-    
-    User Question: {user_query}
-    
-    Answer concisely using the data provided.
-    """
-    
-    # Try Flash first, then Pro
-    models_to_try = ['gemini-1.5-flash', 'gemini-pro']
-    
-    for model_name in models_to_try:
-        try:
-            model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt)
-            return response.text
-        except Exception:
-            continue # Try next model
-            
-    return "Error: Could not connect to Google AI. Check API Key."
+    try:
+        # 1. Find a working model
+        valid_model_name = get_valid_model(api_key)
+        if not valid_model_name:
+            return "Error: API Key seems blocked. No models found."
+
+        # 2. Configure and Run
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(valid_model_name)
+        
+        data_context = metrics_df.to_string()
+        prompt = f"""
+        Context: You are a financial assistant analyzing a {industry} company.
+        Financial Data:
+        {data_context}
+        
+        User Question: {user_query}
+        
+        Answer concisely using the data provided.
+        """
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"Error: {str(e)}"
 # ==========================================
 # 5. MAIN UI
 # ==========================================
